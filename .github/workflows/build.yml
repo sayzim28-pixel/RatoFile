@@ -17,35 +17,47 @@ jobs:
     - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode.app
 
-    - name: List Directory Structure
-      run: ls -la
+    - name: Build Release Binary
+      run: swift build -c release --disable-sandbox
 
-    - name: Build App Archive
-      run: |
-        if [ -d "*.xcodeproj" ]; then
-          PROJECT_NAME=$(ls -d *.xcodeproj | head -n 1)
-          SCHEME_NAME=$(basename "$PROJECT_NAME" .xcodeproj)
-          echo "Compilando projeto: $PROJECT_NAME com o esquema: $SCHEME_NAME"
-          
-          xcodebuild archive \
-            -project "$PROJECT_NAME" \
-            -scheme "$SCHEME_NAME" \
-            -configuration Release \
-            -archivePath "$PWD/build/RatoFile.xcarchive" \
-            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-        else
-          echo "Nenhum .xcodeproj encontrado na raiz. Verifique a estrutura do repositório."
-          exit 1
-        fi
-
-    - name: Export App Binary (.app / .ipa structure)
+    - name: Package as IPA structure
       run: |
         mkdir -p Payload
-        if [ -d "build/RatoFile.xcarchive/Products/Applications/"* ]; then
-          cp -r build/RatoFile.xcarchive/Products/Applications/*.app Payload/
-          zip -r RatoFile.ipa Payload/
+        # Pega o binário compilado pelo Swift PM e coloca na estrutura de app do iOS
+        BINARY_PATH=$(swift build -c release --show-bin-path)/RatoFilesCore
+        
+        if [ -f "$BINARY_PATH" ]; then
+          # Cria um diretório temporário de .app estruturado
+          APP_DIR="Payload/RatoFile.app"
+          mkdir -p "$APP_DIR"
+          cp "$BINARY_PATH" "$APP_DIR/RatoFile"
+          
+          # Cria o Info.plist mínimo necessário para a estrutura
+          cat << 'EOF' > "$APP_DIR/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleIdentifier</key>
+              <string>com.ratofile.app</string>
+              <key>CFBundleName</key>
+              <string>RatoFile</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSMinimumOSVersion</key>
+              <string>12.0</string>
+          </dict>
+          </dict>
+          </plist>
+          EOF
+          
+          zip -r RatoFile.ipa Payload
         else
-          echo "Arquivo .app não encontrado no archive."
+          echo "Binário compilado não encontrado."
           exit 1
         fi
 
