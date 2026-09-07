@@ -1,24 +1,56 @@
-name: Build RatoFiles
+name: Build and Release IPA
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "principal" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "principal" ]
 
 jobs:
-  build:
+  build-ipa:
     runs-on: macos-latest
 
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Select Xcode Version
+    - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode.app
 
-    - name: Build with Swift Package Manager
-      run: swift build -v
+    - name: List Directory Structure
+      run: ls -la
 
-    - name: Run Tests
-      run: swift test -v
+    - name: Build App Archive
+      run: |
+        if [ -d "*.xcodeproj" ]; then
+          PROJECT_NAME=$(ls -d *.xcodeproj | head -n 1)
+          SCHEME_NAME=$(basename "$PROJECT_NAME" .xcodeproj)
+          echo "Compilando projeto: $PROJECT_NAME com o esquema: $SCHEME_NAME"
+          
+          xcodebuild archive \
+            -project "$PROJECT_NAME" \
+            -scheme "$SCHEME_NAME" \
+            -configuration Release \
+            -archivePath "$PWD/build/RatoFile.xcarchive" \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+        else
+          echo "Nenhum .xcodeproj encontrado na raiz. Verifique a estrutura do repositório."
+          exit 1
+        fi
+
+    - name: Export App Binary (.app / .ipa structure)
+      run: |
+        mkdir -p Payload
+        if [ -d "build/RatoFile.xcarchive/Products/Applications/"* ]; then
+          cp -r build/RatoFile.xcarchive/Products/Applications/*.app Payload/
+          zip -r RatoFile.ipa Payload/
+        else
+          echo "Arquivo .app não encontrado no archive."
+          exit 1
+        fi
+
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: RatoFile-IPA
+        path: RatoFile.ipa
